@@ -2,7 +2,6 @@ package health
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/agpprastyo/career-link/pkg/database"
@@ -36,9 +35,12 @@ func (h *Handler) Check(c *fiber.Ctx) error {
 	redisErr := h.redis.GetClient().Ping(ctx).Err()
 
 	if dbErr != nil || redisErr != nil {
-		return c.Status(fiber.StatusServiceUnavailable).
-			SendString(fmt.Sprintf("Service unhealthy. DB: %v, Redis: %v", dbErr, redisErr))
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"status": "unhealthy",
+		})
 	}
 
-	return c.Status(fiber.StatusOK).SendString("Service healthy")
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"status": "healthy",
+	})
 }

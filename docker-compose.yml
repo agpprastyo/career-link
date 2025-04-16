@@ -1,24 +1,51 @@
-
 services:
-  postgres:
-    image: postgres:15
+  db:
+    image: 'postgres:latest'
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=career_link
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
     ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ${DB_PORT}:${DB_PORT}
+    networks:
+      - app_network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'pg_isready', '-U', '${DB_USER}', '-d', '${DB_NAME}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    env_file:
+      - .env
 
   redis:
-    image: redis:7
+    image: 'redis:latest'
     ports:
-      - "6379:6379"
+      - ${REDIS_PORT}:${REDIS_PORT}
+    networks:
+      - app_network
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    env_file:
+      - .env
+
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"  # S3 API Port
+      - "9001:9001"  # Web UI Port
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: admin123
     volumes:
-      - redis_data:/data
+      - minio_data:/data
+    command: server --console-address ":9001" /data
+    restart: unless-stopped
+
+networks:
+  app_network:
+    driver: bridge
 
 volumes:
-  postgres_data:
-  redis_data:
-
+  minio_data:

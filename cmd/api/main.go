@@ -2,77 +2,65 @@ package main
 
 import (
 	"context"
-	"github.com/agpprastyo/career-link/pkg/logger"
+	"github.com/agpprastyo/career-link/internal/wire"
+	"github.com/agpprastyo/career-link/pkg/monitoring"
+	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
+
 	"syscall"
 	"time"
-
-	"github.com/agpprastyo/career-link/config"
-	"github.com/agpprastyo/career-link/pkg/database"
-	"github.com/agpprastyo/career-link/pkg/redis"
-	"github.com/agpprastyo/career-link/pkg/server"
 )
 
+// @title Career Link API
+// @version 1.0
+// @description API for Career Link application
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.email support@careerlink.com
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @host localhost:8080
+// @BasePath /api/v1
+// @schemes http https
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 func main() {
+	err := godotenv.Load()
 	// Load configuration
-	cfg := config.Load()
+	//cfg := config.Load()
 
-	// Initialize logger
-	log := logger.New(logger.Config{
-		Level:      cfg.Logger.Level,
-		JSONFormat: cfg.Logger.JSONFormat,
-		Output:     os.Stdout,
-	})
-
-	log.Info("Starting application...")
-
-	// Initialize database connection
-	db, err := database.NewPostgresDB(cfg.Database)
+	server, err := wire.InitializeAPI()
 	if err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		panic(err)
 	}
-	defer db.Close()
 
-	// Initialize Redis connection
-	redisClient, err := redis.NewClient(cfg.Redis)
-	if err != nil {
-		log.Fatalf("Failed to initialize Redis: %v", err)
+	monitoring.SetupMonitoring(server.App, "career-link-api")
+
+	server.Logger.Info("Initializing server...")
+
+	server.Logger.Info("Starting server on port " + server.Config.Server.Port)
+	server.Logger.Info("OpenAPI doc available at http://localhost:" + server.Config.Server.Port + "/swagger/index.html")
+	if err := server.App.Listen(":" + server.Config.Server.Port); err != nil {
+		server.Logger.WithError(err).Fatal("Server failed to start")
 	}
-	defer redisClient.Close()
-
-	// Test connections
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := db.Ping(ctx); err != nil {
-		log.Fatalf("Database connection failed: %v", err)
-	}
-	log.Println("Connected to PostgreSQL")
-
-	if err := redisClient.GetClient().Ping(ctx).Err(); err != nil {
-		log.Fatalf("Redis connection failed: %v", err)
-	}
-	log.Println("Connected to Redis")
-
-	// Initialize and start server
-	srv := server.New(cfg, db, redisClient, log)
-	srv.Start()
 
 	// Setup graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	<-quit
-	log.Println("Shutting down...")
+	server.Logger.Println("Shutting down...")
 
 	// Give server up to 10 seconds to finish processing requests
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server shutdown failed: %v", err)
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		server.Logger.Fatalf("Server shutdown failed: %v", err)
 	}
 
-	log.Println("Server gracefully stopped")
+	server.Logger.Println("Server gracefully stopped")
 }

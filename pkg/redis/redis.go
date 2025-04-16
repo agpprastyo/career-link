@@ -3,19 +3,12 @@ package redis
 import (
 	"context"
 	"fmt"
+	"github.com/agpprastyo/career-link/config"
+	"github.com/valyala/fasthttp"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
-
-// Config holds Redis connection configuration
-type Config struct {
-	Host     string
-	Port     string
-	Password string
-	DB       int
-	PoolSize int
-}
 
 // Client wraps Redis client functionality
 type Client struct {
@@ -23,12 +16,12 @@ type Client struct {
 }
 
 // NewClient creates a new Redis client
-func NewClient(cfg Config) (*Client, error) {
+func NewClient(cfg config.AppConfig) (*Client, error) {
 	client := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", cfg.Host, cfg.Port),
-		Password: cfg.Password,
-		DB:       cfg.DB,
-		PoolSize: cfg.PoolSize,
+		Addr:     fmt.Sprintf("%s:%s", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+		PoolSize: cfg.Redis.PoolSize,
 	})
 
 	// Test connection
@@ -71,4 +64,12 @@ func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 // GetClient returns the underlying Redis client
 func (c *Client) GetClient() *redis.Client {
 	return c.client
+}
+
+func (c *Client) Expire(background context.Context, id string, duration time.Duration) {
+	c.client.Expire(background, id, duration)
+}
+
+func (c *Client) Del(ctx *fasthttp.RequestCtx, id string) interface{} {
+	return c.client.Del(ctx, id)
 }

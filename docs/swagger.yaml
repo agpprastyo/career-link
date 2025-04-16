@@ -1,0 +1,258 @@
+basePath: /api/v1
+definitions:
+  user.DeleteAdminResponse:
+    properties:
+      message:
+        default: Admin deleted successfully
+        type: string
+    type: object
+  user.ErrorBadRequest:
+    properties:
+      error:
+        default: Bad Request
+        type: string
+    type: object
+  user.ErrorInternalServer:
+    properties:
+      error:
+        default: Internal Server Error
+        type: string
+    type: object
+  user.ErrorNotFound:
+    properties:
+      error:
+        default: Not Found
+        type: string
+    type: object
+  user.ErrorUnauthorized:
+    properties:
+      error:
+        default: Unauthorized
+        type: string
+    type: object
+  user.LoginRequest:
+    description: Login request payload
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  user.LoginResponse:
+    description: Login response with user data and token
+    properties:
+      expiry:
+        type: string
+      token:
+        type: string
+      user:
+        $ref: '#/definitions/user.User'
+    type: object
+  user.LogoutResponse:
+    properties:
+      message:
+        default: User logged out successfully
+        type: string
+    type: object
+  user.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      role:
+        $ref: '#/definitions/user.Role'
+      username:
+        type: string
+    type: object
+  user.RegisterResponse:
+    properties:
+      message:
+        type: string
+      user:
+        $ref: '#/definitions/user.User'
+    type: object
+  user.Role:
+    enum:
+    - admin
+    - company
+    - job_seeker
+    type: string
+    x-enum-varnames:
+    - AdminRole
+    - CompanyRole
+    - JobSeekerRole
+  user.User:
+    properties:
+      avatar:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      is_active:
+        type: boolean
+      password:
+        type: string
+      role:
+        $ref: '#/definitions/user.Role'
+      updated_at:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@careerlink.com
+    name: API Support
+  description: API for Career Link application
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Career Link API
+  version: "1.0"
+paths:
+  /admin/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete admin & admin viewers by super admin
+      parameters:
+      - description: id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.DeleteAdminResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user.ErrorBadRequest'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/user.ErrorNotFound'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user.ErrorInternalServer'
+      summary: Delete Admin & admin viewers
+      tags:
+      - Super Admin
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user with email/username and password
+      parameters:
+      - description: Login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/user.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.LoginResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user.ErrorBadRequest'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user.ErrorUnauthorized'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user.ErrorInternalServer'
+      summary: User login
+      tags:
+      - auth
+  /logout:
+    post:
+      consumes:
+      - application/json
+      description: Logout a user by deleting their session. Clients should also remove
+        the JWT token from local storage.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.LogoutResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user.ErrorUnauthorized'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user.ErrorInternalServer'
+      security:
+      - BearerAuth: []
+      summary: User logout
+      tags:
+      - auth
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user with email/username and password for job seeker
+        and company
+      parameters:
+      - description: User registration data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.RegisterResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/user.ErrorBadRequest'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/user.ErrorUnauthorized'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/user.ErrorInternalServer'
+      summary: User registration
+      tags:
+      - auth
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

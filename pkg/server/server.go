@@ -2,78 +2,79 @@ package server
 
 import (
 	"context"
-	"time"
-
+	"fmt"
+	"github.com/MarceloPetrucio/go-scalar-api-reference"
 	"github.com/agpprastyo/career-link/config"
-	"github.com/agpprastyo/career-link/pkg/database"
-	customlogger "github.com/agpprastyo/career-link/pkg/logger"
-	"github.com/agpprastyo/career-link/pkg/redis"
+	_ "github.com/agpprastyo/career-link/docs"
+	"github.com/agpprastyo/career-link/internal/common/health"
+	"github.com/agpprastyo/career-link/internal/common/middleware"
+	"github.com/agpprastyo/career-link/internal/user/delivery"
+	"github.com/agpprastyo/career-link/pkg/logger"
 	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	fiberlogger "github.com/gofiber/fiber/v2/middleware/logger"
+	fiberLogger "github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/swagger"
 )
 
-// Server represents the HTTP server
+// Server represents the fully configured API server
 type Server struct {
-	app    *fiber.App
-	db     *database.PostgresDB
-	redis  *redis.Client
-	config *config.AppConfig
-	log    *customlogger.Logger
+	App    *fiber.App
+	Config *config.AppConfig
+	Logger *logger.Logger
 }
 
-// New creates a new server instance
-func New(cfg *config.AppConfig, db *database.PostgresDB, redisClient *redis.Client, log *customlogger.Logger) *Server {
-	app := fiber.New(fiber.Config{
-		ReadTimeout:  cfg.Server.ReadTimeout,
-		WriteTimeout: cfg.Server.WriteTimeout,
-		IdleTimeout:  120 * time.Second,
+func NewServer(app *fiber.App, cfg *config.AppConfig, log *logger.Logger, userHandler *delivery.Handler, healthHandler *health.Handler) *Server {
+
+	app.Use(fiberLogger.New())
+	app.Use(middleware.RecoveryMiddleware(log))
+
+	app.Get("/swagger/*", middleware.NewSwaggerAuth(cfg), swagger.HandlerDefault)
+	app.Get("/reference", middleware.NewSwaggerAuth(cfg), func(c *fiber.Ctx) error {
+		htmlContent, err := scalar.ApiReferenceHTML(&scalar.Options{
+			SpecURL: "./docs/swagger.json",
+			CustomOptions: scalar.CustomOptions{
+				PageTitle: "Simple API",
+			},
+			DarkMode: true,
+		})
+
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).SendString(fmt.Sprintf("%v", err))
+		}
+
+		return c.Type("html").SendString(htmlContent)
 	})
 
-	// Create the server
-	s := &Server{
-		app:    app,
-		db:     db,
-		redis:  redisClient,
-		config: cfg,
-		log:    log,
+	// Register routes
+	root := app.Group("/")
+	root.Get("/health", healthHandler.Check)
+
+	api := app.Group("/api/v1")
+	userHandler.RegisterUserRoutes(api)
+	userHandler.RegisterUserVerifyRoute(api)
+	userHandler.RegisterUserWithMiddlewareRoutes(api)
+	userHandler.RegisterAdminRoutes(api)
+	userHandler.RegisterSuperAdminRoutes(api)
+	userHandler.RegisterCompanyRoutes(api)
+
+	return &Server{
+		App:    app,
+		Config: cfg,
+		Logger: log,
 	}
-
-	// Register middleware
-	s.registerMiddleware()
-
-	// Register routes (now from routes.go)
-	s.setupRoutes()
-
-	return s
 }
 
 // Start begins listening for requests
 func (s *Server) Start() {
 	go func() {
-		s.log.Infof("Server is running on port %s", s.config.Server.Port)
-		if err := s.app.Listen(":" + s.config.Server.Port); err != nil {
-			s.log.Fatalf("Error starting server: %v", err)
+		s.Logger.Infof("Server is running on port %s", s.Config.Server.Port)
+		if err := s.App.Listen(":" + s.Config.Server.Port); err != nil {
+			s.Logger.Fatalf("Error starting server: %v", err)
 		}
 	}()
 }
 
 // Shutdown gracefully stops the server
 func (s *Server) Shutdown(ctx context.Context) error {
-	s.log.Info("Server is shutting down...")
-	return s.app.Shutdown()
-}
-
-// registerMiddleware adds middleware to the app
-func (s *Server) registerMiddleware() {
-	// Log all requests
-	s.app.Use(fiberlogger.New())
-
-	// Add CORS middleware
-	s.app.Use(cors.New(cors.Config{
-		AllowOrigins:     "*",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
-		AllowHeaders:     "Content-Type,Authorization",
-		AllowCredentials: false,
-	}))
+	s.Logger.Info("Server is shutting down...")
+	return s.App.Shutdown()
 }

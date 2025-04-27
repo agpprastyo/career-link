@@ -24,6 +24,10 @@ var (
 	ErrTokenExpired       = errors.New("token expired")
 	ErrUserNotActive      = errors.New("users not active")
 	ErrInvalidInput       = errors.New("invalid input")
+	ErrTokenAlreadyUsed   = errors.New("token already used")
+	ErrTokenNotFound      = errors.New("token not found")
+	ErrDatabaseConnection = errors.New("database connection error")
+	ErrUserAlreadyActive  = errors.New("user already active")
 )
 
 // UserRepository implements user repository using PostgreSQL
@@ -48,6 +52,8 @@ type Repository interface {
 	TokenExists(ctx context.Context, token string) (bool, error)
 	UpdateToken(ctx context.Context, tokenID uuid.UUID, usedAt time.Time) error
 
+	ActivateUser(ctx context.Context, userID uuid.UUID) error
+
 	SendVerificationEmail(ctx context.Context, username, email, token string) error
 	SendPostVerificationEmail(ctx context.Context, username, email string) error
 
@@ -65,12 +71,17 @@ type Repository interface {
 	SoftDeleteAdmin(ctx context.Context, userID uuid.UUID) error
 
 	GetCompanyByID(ctx context.Context, id uuid.UUID) (*entity.Company, error)
-	//StoreUserSession(ctx context.Context, userID uuid.UUID, sessionID string) error
+	StoreUserSession(ctx context.Context, userIDStr string, sessionID string, user *entity.User) error
+
+	GetAdminSessionByID(ctx context.Context, userID string) (*entity.Admin, error)
+	GetUserSessionByID(ctx context.Context, userID string) (*entity.User, error)
+	DeleteUserSession(ctx context.Context, sessionID string) error
 }
 
 // NewUserRepository creates new UserRepository
-func NewUserRepository(db *database.PostgresDB, log *logger.Logger, client *mail.Client, minio *minio.Client, verifyBaseURL string) *UserRepository {
+func NewUserRepository(db *database.PostgresDB, log *logger.Logger, client *mail.Client, minio *minio.Client, verifyBaseURL string, redis *redis.Client) *UserRepository {
 	return &UserRepository{
+		redis:         redis,
 		mail:          client,
 		verifyBaseURL: verifyBaseURL,
 		db:            db,

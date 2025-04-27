@@ -15,8 +15,8 @@ import (
 	_ "image/png"  // Register PNG format
 )
 
-// Handler handles HTTP requests for user operations
-type Handler struct {
+// UserHandler handles HTTP requests for user operations
+type UserHandler struct {
 	config      *config.AppConfig
 	userUseCase *usecase.UserUseCase
 	userRepo    *repository.UserRepository
@@ -26,8 +26,8 @@ type Handler struct {
 }
 
 // NewUserHandler creates a new user HTTP handler
-func NewUserHandler(userUseCase *usecase.UserUseCase, log *logger.Logger, cfg *config.AppConfig, tokenMaker token.Maker, redisClient *redis.Client, repo *repository.UserRepository) *Handler {
-	return &Handler{
+func NewUserHandler(userUseCase *usecase.UserUseCase, log *logger.Logger, cfg *config.AppConfig, tokenMaker token.Maker, redisClient *redis.Client, repo *repository.UserRepository) *UserHandler {
+	return &UserHandler{
 		userUseCase: userUseCase,
 		userRepo:    repo,
 		log:         log,
@@ -37,23 +37,26 @@ func NewUserHandler(userUseCase *usecase.UserUseCase, log *logger.Logger, cfg *c
 	}
 }
 
-func (h *Handler) RegisterUserRoutes(router fiber.Router) {
+func (h *UserHandler) RegisterUserRoutes(router fiber.Router) {
 	router.Use(middleware.AuthRateLimiter())
-	router.Post("/login", h.Login)
+	// TODO : implement delete user session in redis if relogin
+	router.Post("/login", h.Login) // test with apidog
+	// TODO: register user (company and jobSeeker) not completed yet
 	router.Post("/register", h.Register)
-	router.Post("/resend-verification-email", h.ResendVerificationEmail)
-	router.Post("/forgot-password", h.ForgotPassword)
-	router.Post("/reset-password", h.ResetPassword)
+
+	router.Post("/resend-verification-email", h.ResendVerificationEmail) // test with apidog
+
+	// TODO : forgot password not completed yet
+	//router.Post("/forgot-password", h.ForgotPassword)
+}
+
+func (h *UserHandler) RegisterUserVerifyRoute(router fiber.Router) {
+	router.Get("/verify", h.VerifyEmailGet) // verify user email to mark as active
 
 }
 
-func (h *Handler) RegisterUserVerifyRoute(router fiber.Router) {
-	router.Get("/verify", h.VerifyEmailGet)
-	router.Get("/verify-forgot-password", h.VerifyForgotPasswordGet)
-}
-
-func (h *Handler) RegisterUserWithMiddlewareRoutes(router fiber.Router) {
-	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.redisClient, h.userRepo, h.log))
+func (h *UserHandler) RegisterUserWithMiddlewareRoutes(router fiber.Router) {
+	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.userRepo, h.log))
 	router.Post("/update-password", h.UpdatePassword)
 	router.Post("/logout", h.Logout)
 
@@ -63,8 +66,8 @@ func (h *Handler) RegisterUserWithMiddlewareRoutes(router fiber.Router) {
 }
 
 // RegisterAdminRoutes admin routes
-func (h *Handler) RegisterAdminRoutes(router fiber.Router) {
-	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.redisClient, h.userRepo, h.log))
+func (h *UserHandler) RegisterAdminRoutes(router fiber.Router) {
+	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.userRepo, h.log))
 	router.Use(middleware.RequireAdminMiddleware())
 	router.Get("/admin/users", h.GetUsers)
 	router.Get("/admin/users/:id", h.GetUsersByID)
@@ -74,28 +77,31 @@ func (h *Handler) RegisterAdminRoutes(router fiber.Router) {
 	//router.Delete("/admin/users/:id", h.DeleteUser)
 }
 
-func (h *Handler) RegisterSuperAdminRoutes(router fiber.Router) {
-	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.redisClient, h.userRepo, h.log))
+func (h *UserHandler) RegisterSuperAdminRoutes(router fiber.Router) {
+	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.userRepo, h.log))
 	router.Use(middleware.RequireSuperAdminMiddleware())
 
 	router.Post("/admin", h.CreateAdmin)
 	// active and deactivate admin
 	router.Patch("/admin/:id/status", h.UpdateAdminStatus)
 	router.Delete("/admin/:id", h.DeleteAdmin)
+
+	router.Get("/test-admin", func(c *fiber.Ctx) error {
+		return c.SendString("Hello Admin")
+	})
 }
 
-func (h *Handler) RegisterCompanyRoutes(router fiber.Router) {
-	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.redisClient, h.userRepo, h.log))
+func (h *UserHandler) RegisterCompanyRoutes(router fiber.Router) {
+	router.Use(middleware.RequireAuthMiddleware(h.tokenMaker, h.userRepo, h.log))
 	router.Use(middleware.RequireCompanyMiddleware())
 
 	router.Get("/company", h.GetCompany)
-	//router.Post("/company", h.CreateCompany)
 	//router.Put("/company", h.UpdateCompany)
 	//router.Delete("/company", h.DeleteCompany)
 }
 
 // GetCompany get company
-func (h *Handler) GetCompany(c *fiber.Ctx) error {
+func (h *UserHandler) GetCompany(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	// Get the user ID from the context

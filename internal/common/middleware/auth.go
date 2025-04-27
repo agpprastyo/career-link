@@ -2,18 +2,15 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+
 	responseError "github.com/agpprastyo/career-link/internal/common/errors"
 	"github.com/agpprastyo/career-link/internal/user/entity"
 	"github.com/agpprastyo/career-link/internal/user/repository"
 	"github.com/agpprastyo/career-link/pkg/logger"
-	"github.com/agpprastyo/career-link/pkg/redis"
 	"github.com/agpprastyo/career-link/pkg/token"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"strings"
-	"time"
 )
 
 func RequireAdminMiddleware() fiber.Handler {
@@ -50,9 +47,9 @@ func RequireCompanyMiddleware() fiber.Handler {
 }
 
 // RequireAuthMiddleware creates a middleware that validates JWT tokens and stores user data in Redis
-func RequireAuthMiddleware(tokenMaker token.Maker, redisClient *redis.Client, userRepo *repository.UserRepository, log *logger.Logger) fiber.Handler {
+func RequireAuthMiddleware(tokenMaker token.Maker, userRepo *repository.UserRepository, log *logger.Logger) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Extract and validate token (existing code)
+		// Extract and validate token
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			return responseError.RespondWithError(c, fiber.StatusUnauthorized, "Authorization header is required")
@@ -69,91 +66,50 @@ func RequireAuthMiddleware(tokenMaker token.Maker, redisClient *redis.Client, us
 			return responseError.RespondWithError(c, fiber.StatusUnauthorized, "Invalid or expired token")
 		}
 
-		// Set basic user data from token
-		c.Locals("user_id", payload.UserID)
+		// Extract user data from token
+		userID := payload.UserID
+		c.Locals("user_id", userID)
 		c.Locals("email", payload.Email)
 
-		// Try to get user from Redis first
+		// Try to get user from session using repository
 		ctx := c.Context()
-		sessionID := fmt.Sprintf("session:%s", payload.UserID)
-		userJSON, err := redisClient.Get(ctx, sessionID)
+		user, err := userRepo.GetUserSessionByID(ctx, userID)
 
-		// User found in Redis
-		if err == nil && userJSON != "" {
-			var userData entity.User
-			if err := json.Unmarshal([]byte(userJSON), &userData); err == nil {
-				c.Locals("user", userData)
+		if err == nil && user != nil {
+			// User found in session
+			c.Locals("user", *user)
 
-				// Check if admin and get admin data from Redis
-				if userData.Role == entity.AdminRole {
-					adminSessionID := fmt.Sprintf("admin:%s", payload.UserID)
-					adminJSON, err := redisClient.Get(ctx, adminSessionID)
-					if err == nil && adminJSON != "" {
-						var adminData entity.Admin
-						if err := json.Unmarshal([]byte(adminJSON), &adminData); err == nil {
-							c.Locals("admin", adminData)
-						}
-					}
+			// If admin, get admin data
+			if user.Role == entity.AdminRole {
+				admin, err := userRepo.GetAdminSessionByID(ctx, userID)
+				if err == nil && admin != nil {
+					c.Locals("admin", *admin)
 				}
-
-				// Update expiration asynchronously
-				go func() {
-					redisClient.Expire(ctx, sessionID, 24*time.Hour)
-				}()
-				return c.Next()
 			}
-			// If unmarshal fails, continue to get from DB
+
+			return c.Next()
 		}
 
-		// User not in Redis, fetch from database
-		userUUID, err := uuid.Parse(payload.UserID)
+		// Fetch from database if not in session
+		userUUID, err := uuid.Parse(userID)
 		if err != nil {
-			return responseError.RespondWithError(c, fiber.StatusUnauthorized, "Invalid user ID in token")
+			return responseError.RespondWithError(c, fiber.StatusUnauthorized, "Invalid user ID format")
 		}
 
-		userData, err := userRepo.GetUserByID(ctx, userUUID)
+		user, err = userRepo.GetUserByID(ctx, userUUID)
 		if err != nil {
-			log.WithError(err).Error("Failed to get user by ID")
+			log.WithError(err).Error("User not found")
 			return responseError.RespondWithError(c, fiber.StatusUnauthorized, "User not found")
 		}
 
-		// Store user in context
-		c.Locals("user", userData)
+		c.Locals("user", *user)
 
-		// If user is admin, also fetch and cache admin data
-		if userData.Role == entity.AdminRole {
-
-			adminData, err := userRepo.GetAdminByUserID(ctx, userUUID)
-			if err == nil {
-				c.Locals("admin", adminData)
-
-				// Cache admin data asynchronously
-				go func() {
-					adminJSON, err := json.Marshal(adminData)
-					if err != nil {
-						log.WithError(err).Error("Failed to marshal admin data")
-						return
-					}
-					adminSessionID := fmt.Sprintf("admin:%s", payload.UserID)
-					err = redisClient.Set(context.Background(), adminSessionID, adminJSON, 24*time.Hour)
-					if err != nil {
-						log.WithError(err).Error("Failed to cache admin data")
-						return
-					}
-				}()
-			}
-		}
-
-		// Cache user data in Redis asynchronously
+		// Store in session asynchronously
 		go func() {
-			userJSON, err := json.Marshal(userData)
+			bgCtx := context.Background()
+			err := userRepo.StoreUserSession(bgCtx, userID, accessToken, user)
 			if err != nil {
-				log.WithError(err).Error("Failed to marshal user data")
-				return
-			}
-			err = redisClient.Set(context.Background(), sessionID, userJSON, 24*time.Hour)
-			if err != nil {
-				log.WithError(err).Error("Failed to cache user data")
+				log.WithError(err).Error("Failed to store user session")
 				return
 			}
 		}()

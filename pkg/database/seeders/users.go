@@ -3,7 +3,8 @@ package seeders
 import (
 	"context"
 	"fmt"
-	"github.com/agpprastyo/career-link/internal/user"
+
+	"github.com/agpprastyo/career-link/internal/user/entity"
 	"github.com/agpprastyo/career-link/pkg/database"
 	"github.com/agpprastyo/career-link/pkg/utils"
 	"github.com/google/uuid"
@@ -31,13 +32,13 @@ func SeedUsers(db *database.PostgresDB) error {
 	}
 	seekerPassword, _ := utils.HashPassword("seeker123")
 
-	users := []user.User{
+	users := []entity.User{
 		{
 			ID:       adminID,
 			Username: "admin",
 			Email:    "admin@example.com",
 			Password: string(adminPassword),
-			Role:     user.AdminRole,
+			Role:     entity.AdminRole,
 			IsActive: true,
 		},
 		{
@@ -45,7 +46,7 @@ func SeedUsers(db *database.PostgresDB) error {
 			Username: "company",
 			Email:    "company@example.com",
 			Password: string(companyPassword),
-			Role:     user.CompanyRole,
+			Role:     entity.CompanyRole,
 			IsActive: true,
 		},
 		{
@@ -53,8 +54,16 @@ func SeedUsers(db *database.PostgresDB) error {
 			Username: "jobSeeker",
 			Email:    "seeker@example.com",
 			Password: string(seekerPassword),
-			Role:     user.JobSeekerRole,
+			Role:     entity.JobSeekerRole,
 			IsActive: true,
+		},
+		{
+			ID:       seekerID,
+			Username: "nogahe1533",
+			Email:    "nogahe1533@clubemp.com",
+			Password: string(seekerPassword),
+			Role:     entity.JobSeekerRole,
+			IsActive: false,
 		},
 	}
 

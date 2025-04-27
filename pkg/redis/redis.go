@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/agpprastyo/career-link/config"
-	"github.com/valyala/fasthttp"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -70,6 +69,10 @@ func (c *Client) Expire(background context.Context, id string, duration time.Dur
 	c.client.Expire(background, id, duration)
 }
 
-func (c *Client) Del(ctx *fasthttp.RequestCtx, id string) interface{} {
+func (c *Client) Del(ctx context.Context, id string) interface{} {
 	return c.client.Del(ctx, id)
+}
+
+func (c *Client) Ping() (interface{}, interface{}) {
+	return c.client.Ping(context.Background()), nil
 }

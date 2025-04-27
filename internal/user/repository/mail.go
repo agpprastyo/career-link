@@ -11,18 +11,20 @@ import (
 )
 
 func (r *UserRepository) SendVerificationEmail(ctx context.Context, username, email, token string) error {
-
-	baseURL := r.verifyBaseURL
+	// Ensure baseURL is properly formatted
+	baseURL := r.verifyBaseURL + "/verify"
 	if !strings.HasSuffix(baseURL, "/") {
 		baseURL = baseURL + "/"
 	}
 
-	verificationURL := fmt.Sprintf("%sverify?email=%s&token=%s",
+	// Remove the path segment that's causing duplication
+	// Change this line to use the correct path structure
+	verificationURL := fmt.Sprintf("%s?email=%s&token=%s",
 		baseURL,
 		url.QueryEscape(email),
 		url.QueryEscape(token))
 
-	// Prepare template data
+	// Rest of the function remains unchanged
 	data := templates.RegistrationData{
 		Username:        username,
 		Email:           email,
@@ -32,13 +34,11 @@ func (r *UserRepository) SendVerificationEmail(ctx context.Context, username, em
 		SupportEmail:    "support@careerlink.com",
 	}
 
-	// Generate HTML from template
 	htmlContent, err := templates.GetRegistrationEmailHTML(data)
 	if err != nil {
 		return err
 	}
 
-	// Send email using SendGrid
 	message := mail.EmailMessage{
 		To:      email,
 		Subject: "Verify Your Career Link Account",
@@ -46,14 +46,13 @@ func (r *UserRepository) SendVerificationEmail(ctx context.Context, username, em
 		IsHTML:  true,
 	}
 
-	err = r.mail.SendEmail(ctx, message)
-	return err
+	return r.mail.SendEmail(ctx, message)
 }
 
 // SendPostVerificationEmail Complete the SendPostVerificationEmail method in internal/user/repository/mail.go
 func (r *UserRepository) SendPostVerificationEmail(ctx context.Context, username, email string) error {
 	// Prepare template data
-	loginURL := strings.TrimSuffix(r.verifyBaseURL, "/verify")
+	loginURL := r.verifyBaseURL
 	if !strings.HasSuffix(loginURL, "/") {
 		loginURL += "/"
 	}

@@ -124,48 +124,6 @@ func (uc *UserUseCase) VerifyPasswordResetToken(ctx context.Context, token strin
 	return true, nil
 }
 
-// ForgotPassword generates a password reset token and sends it to the user's email
-func (uc *UserUseCase) ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest) error {
-	usr, err := uc.repo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
-		uc.log.WithError(err).Error("Failed to get users by email")
-		return repository.ErrUserNotFound
-	}
-
-	// Generate a new token ID for the password reset link
-	tokenID, err := uuid.NewV7()
-	if err != nil {
-		uc.log.WithError(err).Error("Failed to generate UUID")
-		return err
-	}
-
-	// Generate secure token for the password reset link
-	token, err := utils.GenerateUniqueToken(ctx, uc.repo.TokenExists)
-	if err != nil {
-		uc.log.WithError(err).Error("Failed to generate unique token")
-		return err
-	}
-
-	tokenExpiry := time.Now().Add(24 * time.Hour)
-	tokenType := entity.PasswordReset
-
-	// Store token in database for later verification via link
-	if err := uc.repo.CreateToken(ctx, usr.ID, tokenID, token, tokenType, tokenExpiry); err != nil {
-		uc.log.WithError(err).Error("Failed to create password reset token")
-		return err
-	}
-
-	// Send password reset link email in background
-	go func() {
-		bgCtx := context.Background()
-		if err := uc.repo.SendVerificationEmail(bgCtx, usr.Username, usr.Email, token); err != nil {
-			uc.log.WithError(err).Error("Failed to send password reset email with link")
-		}
-	}()
-
-	return nil
-}
-
 // UpdatePassword changes a user's password after verifying the current password
 func (uc *UserUseCase) UpdatePassword(ctx context.Context, req dto.UpdatePasswordRequest) error {
 	// Parse user ID from string to UUID
@@ -215,6 +173,11 @@ func (uc *UserUseCase) ResendVerificationEmail(ctx context.Context, req dto.Rese
 		return repository.ErrUserNotFound
 	}
 
+	if usr.IsActive {
+		uc.log.WithField("user_id", usr.ID).Error("User is already active")
+		return repository.ErrUserAlreadyActive
+	}
+
 	// Generate a new token ID for the verification link
 	tokenID, err := uuid.NewV7()
 	if err != nil {
@@ -257,6 +220,11 @@ func (uc *UserUseCase) VerifyEmail(ctx context.Context, req dto.VerifyEmailReque
 		return err
 	}
 
+	if token.UsedAt != nil {
+		uc.log.WithError(err).Error("Token already used")
+		return repository.ErrTokenAlreadyUsed
+	}
+
 	if token.Type != "email_verification" {
 		return repository.ErrInvalidToken
 	}
@@ -265,25 +233,28 @@ func (uc *UserUseCase) VerifyEmail(ctx context.Context, req dto.VerifyEmailReque
 		return repository.ErrTokenExpired
 	}
 
-	usr, err := uc.repo.GetUserByID(ctx, token.UserID)
-	if err != nil {
-		uc.log.WithError(err).Error("Failed to get users by ID")
+	if err := uc.repo.ActivateUser(ctx, token.UserID); err != nil {
+		uc.log.WithError(err).Error("Failed to activate user")
 		return err
 	}
-
-	usr.IsActive = true
-
-	if err := uc.repo.UpdateUser(ctx, usr); err != nil {
-		uc.log.WithError(err).Error("Failed to update users status to active")
-		return err
-	}
-
 	// Mark token as used and send post-verification email in background
 	go func() {
+		// Create a new background context for goroutine operations
 		bgCtx := context.Background()
+
+		// Get user data for email
+		usr, err := uc.repo.GetUserByID(bgCtx, token.UserID)
+		if err != nil {
+			uc.log.WithError(err).Error("Failed to get user by ID in background task")
+			return
+		}
+
+		// Mark token as used
 		if err := uc.repo.UpdateToken(bgCtx, token.ID, time.Now()); err != nil {
 			uc.log.WithError(err).Error("Failed to update token")
 		}
+
+		// Send confirmation email
 		if err := uc.repo.SendPostVerificationEmail(bgCtx, usr.Username, usr.Email); err != nil {
 			uc.log.WithError(err).Error("Failed to send post-verification email")
 		}
@@ -434,11 +405,18 @@ func (uc *UserUseCase) Login(ctx context.Context, req dto.LoginRequest) (*dto.Lo
 
 	expiry := time.Now().Add(24 * time.Hour)
 
+	sessionKey := fmt.Sprintf("session:%s", usr.ID)
+	err = uc.repo.DeleteUserSession(ctx, sessionKey)
+	if err != nil {
+		uc.log.WithError(err).Error("Failed to delete old session")
+
+	}
+
 	// Store user data in Redis for session management
-	//if err := uc.repo.StoreUserSession(ctx, usr.ID.String(), tokenString, usr); err != nil {
-	//	uc.log.WithError(err).Error("Failed to store user session in Redis")
-	//	return nil, errors.New("failed to store session")
-	//}
+	if err := uc.repo.StoreUserSession(ctx, usr.ID.String(), tokenString, usr); err != nil {
+		uc.log.WithError(err).Error("Failed to store user session in Redis")
+		return nil, errors.New("failed to store session")
+	}
 
 	return &dto.LoginResponse{
 		User:   *usr,

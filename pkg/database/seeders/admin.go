@@ -3,7 +3,8 @@ package seeders
 import (
 	"context"
 	"fmt"
-	"github.com/agpprastyo/career-link/internal/user"
+	"github.com/agpprastyo/career-link/internal/user/entity"
+
 	"github.com/agpprastyo/career-link/pkg/database"
 	"github.com/agpprastyo/career-link/pkg/utils"
 	"github.com/google/uuid"
@@ -44,13 +45,13 @@ func SeedAdmins(db *database.PostgresDB) error {
 	}
 	adminViewerRolePassword, _ := utils.HashPassword("adminviewer123")
 
-	users := []user.User{
+	users := []entity.User{
 		{
 			ID:       adminSuperUserUUID,
 			Username: "adminSuper",
 			Email:    "adminsuper@example.com",
 			Password: adminRoleSuperPassword,
-			Role:     user.AdminRole,
+			Role:     entity.AdminRole,
 			IsActive: true,
 		},
 		{
@@ -58,7 +59,7 @@ func SeedAdmins(db *database.PostgresDB) error {
 			Username: "adminAdmin",
 			Email:    "adminAdmin@example.com",
 			Password: adminRolePassword,
-			Role:     user.AdminRole,
+			Role:     entity.AdminRole,
 			IsActive: true,
 		},
 		{
@@ -66,15 +67,15 @@ func SeedAdmins(db *database.PostgresDB) error {
 			Username: "adminViewer",
 			Email:    "adminviewer@example.com",
 			Password: adminViewerRolePassword,
-			Role:     user.AdminRole,
+			Role:     entity.AdminRole,
 			IsActive: true,
 		},
 	}
 
-	admin := []user.Admin{
-		{ID: adminRoleSuperUUID, UserID: adminSuperUserUUID, Role: user.AdminRoleSuper, IsActive: true},
-		{ID: adminRoleUUID, UserID: adminUserUUID, Role: user.AdminRoleAdmin, IsActive: true},
-		{ID: adminViewerRoleUUID, UserID: adminViewerUserUUID, Role: user.AdminRoleViewer, IsActive: true},
+	admin := []entity.Admin{
+		{ID: adminRoleSuperUUID, UserID: adminSuperUserUUID, Role: entity.AdminRoleSuper, IsActive: true},
+		{ID: adminRoleUUID, UserID: adminUserUUID, Role: entity.AdminRoleAdmin, IsActive: true},
+		{ID: adminViewerRoleUUID, UserID: adminViewerUserUUID, Role: entity.AdminRoleViewer, IsActive: true},
 	}
 
 	// Begin transaction

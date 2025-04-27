@@ -26,7 +26,7 @@ import (
 )
 
 // GetUser handles fetching user data
-func (h *Handler) GetUser(c *fiber.Ctx) error {
+func (h *UserHandler) GetUser(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	userID := c.Locals("user_id").(string)
@@ -63,7 +63,7 @@ func (h *Handler) GetUser(c *fiber.Ctx) error {
 }
 
 // UpdateAvatar handles updating user avatar through file upload
-func (h *Handler) UpdateAvatar(c *fiber.Ctx) error {
+func (h *UserHandler) UpdateAvatar(c *fiber.Ctx) error {
 	// Get user ID from context
 	userID := c.Locals("user_id").(string)
 
@@ -175,11 +175,11 @@ func (h *Handler) UpdateAvatar(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Security BearerAuth
-// @Success 200 {object} user.LogoutResponse
-// @Failure 401 {object} user.ErrorUnauthorized
-// @Failure 500 {object} user.ErrorInternalServer
+// @Success 200 {object} dto.LogoutResponse
+// @Failure 401 {object} dto.ErrorUnauthorized
+// @Failure 500 {object} dto.ErrorInternalServer
 // @Router /logout [post]
-func (h *Handler) Logout(c *fiber.Ctx) error {
+func (h *UserHandler) Logout(c *fiber.Ctx) error {
 	userID := c.Locals("user_id").(string)
 	sessionID := fmt.Sprintf("session:%s", userID)
 
@@ -196,113 +196,8 @@ func (h *Handler) Logout(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "Logged out"})
 }
 
-// ForgotPassword handles password reset requests
-func (h *Handler) ForgotPassword(c *fiber.Ctx) error {
-	var req dto.ForgotPasswordRequest
-	if err := c.BodyParser(&req); err != nil {
-		h.log.WithError(err).Error("Failed to decode forgot password request")
-		return responseError.RespondWithError(c, fiber.StatusBadRequest, "Invalid request payload")
-	}
-
-	// Validate email
-	req.Validator.CheckField(req.Email != "", "Email", "Email is required")
-	req.Validator.CheckField(validator.Matches(req.Email, validator.RgxEmail), "Email", "Must be a valid email address")
-
-	if req.Validator.HasErrors() {
-		return responseError.RespondWithError(c, fiber.StatusBadRequest, req.Validator.FirstErrorMessage())
-	}
-
-	ctx := c.Context()
-	err := h.userUseCase.ForgotPassword(ctx, req)
-	if err != nil {
-		// Always return success even if email doesn't exist to prevent email enumeration
-		if errors.Is(err, repository.ErrUserNotFound) {
-			return c.Status(fiber.StatusOK).JSON(fiber.Map{
-				"message": "If your email exists, a password reset link has been sent",
-			})
-		}
-		h.log.WithError(err).Error("Forgot password request failed")
-		return responseError.RespondWithError(c, fiber.StatusInternalServerError, "Internal server error")
-	}
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "A password reset link has been sent to your email",
-	})
-}
-
-// VerifyForgotPasswordGet handles token verification from password reset links
-func (h *Handler) VerifyForgotPasswordGet(c *fiber.Ctx) error {
-	email := c.Query("email")
-	tkn := c.Query("token")
-
-	// Validate parameters
-	v := validator.Validator{}
-	v.CheckField(email != "", "Email", "Email is required")
-	v.CheckField(tkn != "", "Token", "Token is required")
-
-	if v.HasErrors() {
-		return responseError.RespondWithError(c, fiber.StatusBadRequest, v.FirstErrorMessage())
-	}
-
-	// Verify token
-	ctx := c.Context()
-	valid, err := h.userUseCase.VerifyPasswordResetToken(ctx, tkn)
-	if err != nil || !valid {
-		h.log.WithError(err).Error("Invalid or expired password reset token")
-		errorHTML, _ := templates.GetResetPasswordErrorHTML(h.config.FrontendURL + "/forgot-password")
-		return c.Status(fiber.StatusBadRequest).Type("html").SendString(errorHTML)
-	}
-
-	// Redirect to frontend reset password page with token and email
-	resetURL := fmt.Sprintf("%s/reset-password?email=%s&token=%s",
-		h.config.FrontendURL, email, tkn)
-	return c.Redirect(resetURL)
-}
-
-// ResetPassword handles setting a new password after verification
-func (h *Handler) ResetPassword(c *fiber.Ctx) error {
-	var req dto.ResetPasswordRequest
-	if err := c.BodyParser(&req); err != nil {
-		h.log.WithError(err).Error("Failed to decode reset password request")
-		return responseError.RespondWithError(c, fiber.StatusBadRequest, "Invalid request payload")
-	}
-
-	// Validate request
-	req.Validator.CheckField(req.Email != "", "Email", "Email is required")
-	req.Validator.CheckField(req.Token != "", "Token", "Token is required")
-	req.Validator.CheckField(req.NewPassword != "", "NewPassword", "New password is required")
-	req.Validator.CheckField(len(req.NewPassword) >= 8, "NewPassword", "Password is too short")
-	req.Validator.CheckField(len(req.NewPassword) <= 72, "NewPassword", "Password is too long")
-	req.Validator.CheckField(validator.NotIn(req.NewPassword, utils.CommonPasswords...),
-		"NewPassword", "Password is too common")
-
-	if req.Validator.HasErrors() {
-		return responseError.RespondWithError(c, fiber.StatusBadRequest, req.Validator.FirstErrorMessage())
-	}
-
-	ctx := c.Context()
-	err := h.userUseCase.ResetPassword(ctx, req)
-	if err != nil {
-		switch {
-		case errors.Is(err, repository.ErrInvalidToken):
-			return responseError.RespondWithError(c, fiber.StatusBadRequest, "Invalid token")
-		case errors.Is(err, repository.ErrTokenExpired):
-			return responseError.RespondWithError(c, fiber.StatusBadRequest, "Token has expired, please request a new one")
-		case errors.Is(err, repository.ErrUserNotFound):
-			return responseError.RespondWithError(c, fiber.StatusNotFound, "User not found")
-		default:
-			h.log.WithError(err).Error("Reset password failed")
-			return responseError.RespondWithError(c, fiber.StatusInternalServerError, "Internal server error")
-		}
-	}
-
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Password has been reset successfully",
-	})
-}
-
 // UpdatePassword handles password updates for authenticated users
-func (h *Handler) UpdatePassword(c *fiber.Ctx) error {
+func (h *UserHandler) UpdatePassword(c *fiber.Ctx) error {
 	// Get user data from context using the User struct stored in Redis
 	userID := c.Locals("user_id").(string)
 	sessionID := fmt.Sprintf("session:%s", userID)
@@ -373,7 +268,7 @@ func (h *Handler) UpdatePassword(c *fiber.Ctx) error {
 }
 
 // VerifyEmailGet handles email verification from GET requests with query parameters
-func (h *Handler) VerifyEmailGet(c *fiber.Ctx) error {
+func (h *UserHandler) VerifyEmailGet(c *fiber.Ctx) error {
 	email := c.Query("email")
 	tkn := c.Query("token")
 
@@ -416,7 +311,7 @@ func (h *Handler) VerifyEmailGet(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).Type("html").SendString(successHTML)
 }
 
-func (h *Handler) ResendVerificationEmail(c *fiber.Ctx) error {
+func (h *UserHandler) ResendVerificationEmail(c *fiber.Ctx) error {
 	var req dto.ResendVerificationRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.log.WithError(err).Error("Failed to decode resend verification request")
@@ -436,8 +331,10 @@ func (h *Handler) ResendVerificationEmail(c *fiber.Ctx) error {
 	if err != nil {
 		switch {
 		case errors.Is(err, repository.ErrUserNotFound):
-			// Return success anyway to prevent email enumeration
 			return c.Status(fiber.StatusOK).JSON(fiber.Map{"message": "If your email exists, a new verification link has been sent"})
+		case errors.Is(err, repository.ErrUserAlreadyActive):
+			return responseError.RespondWithError(c, fiber.StatusBadRequest, "User is already active")
+
 		default:
 			h.log.WithError(err).Error("Resend verification email failed")
 			return responseError.RespondWithError(c, fiber.StatusInternalServerError, "Internal server error")
@@ -453,13 +350,13 @@ func (h *Handler) ResendVerificationEmail(c *fiber.Ctx) error {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param user body user.RegisterRequest true "User registration data"
-// @Success 201 {object} user.RegisterResponse
-// @Failure 400 {object} user.ErrorBadRequest
-// @Failure 401 {object} user.ErrorUnauthorized
-// @Failure 500 {object} user.ErrorInternalServer
+// @Param user body dto.RegisterRequest true "User registration data"
+// @Success 201 {object} dto.RegisterResponse
+// @Failure 400 {object} dto.ErrorBadRequest
+// @Failure 401 {object} dto.ErrorUnauthorized
+// @Failure 500 {object} dto.ErrorInternalServer
 // @Router /register [post]
-func (h *Handler) Register(c *fiber.Ctx) error {
+func (h *UserHandler) Register(c *fiber.Ctx) error {
 	var req dto.RegisterRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.log.WithError(err).Error("Failed to decode register request")
@@ -467,6 +364,7 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 	}
 
 	// validate request
+	req.Validator.CheckField(req.Role != string(entity.CompanyRole) && req.Role != string(entity.JobSeekerRole), "Role", "Role is required")
 	req.Validator.CheckField(req.Email != "", "email ", "either email or username is required")
 	req.Validator.CheckField(validator.Matches(req.Email, validator.RgxEmail), "Email", "Must be a valid email address")
 
@@ -481,6 +379,28 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 
 	if req.Validator.HasErrors() {
 		return responseError.RespondWithError(c, fiber.StatusBadRequest, req.Validator.FirstErrorMessage())
+	}
+
+	if req.Role == string(entity.CompanyRole) {
+		req.Validator.CheckField(req.CompanyProfile.Name != "", "CompanyName", "Company name is required")
+		req.Validator.CheckField(len(req.CompanyProfile.Name) >= 3, "CompanyName", "Company name is too short")
+		req.Validator.CheckField(len(req.CompanyProfile.Name) <= 50, "CompanyName", "Company name is too long")
+
+		if req.Validator.HasErrors() {
+			return responseError.RespondWithError(c, fiber.StatusBadRequest, req.Validator.FirstErrorMessage())
+		}
+	} else if req.Role == string(entity.JobSeekerRole) {
+		req.Validator.CheckField(req.JobSeekerProfile.FirstName != "", "FirstName", "First name is required")
+		req.Validator.CheckField(len(req.JobSeekerProfile.FirstName) >= 3, "FirstName", "First name is too short")
+		req.Validator.CheckField(len(req.JobSeekerProfile.FirstName) <= 50, "FirstName", "First name is too long")
+
+		req.Validator.CheckField(req.JobSeekerProfile.LastName != "", "LastName", "Last name is required")
+		req.Validator.CheckField(len(req.JobSeekerProfile.LastName) >= 3, "LastName", "Last name is too short")
+		req.Validator.CheckField(len(req.JobSeekerProfile.LastName) <= 50, "LastName", "Last name is too long")
+
+		if req.Validator.HasErrors() {
+			return responseError.RespondWithError(c, fiber.StatusBadRequest, req.Validator.FirstErrorMessage())
+		}
 	}
 
 	ctx := c.Context()
@@ -508,12 +428,12 @@ func (h *Handler) Register(c *fiber.Ctx) error {
 // @Accept json
 // @Produce json
 // @Param credentials body user.LoginRequest true "Login credentials"
-// @Success 200 {object} user.LoginResponse
-// @Failure 400 {object} user.ErrorBadRequest
-// @Failure 401 {object} user.ErrorUnauthorized
-// @Failure 500 {object} user.ErrorInternalServer
+// @Success 200 {object} dto.LoginResponse
+// @Failure 400 {object} dto.ErrorBadRequest
+// @Failure 401 {object} dto.ErrorUnauthorized
+// @Failure 500 {object} dto.ErrorInternalServer
 // @Router /login [post]
-func (h *Handler) Login(c *fiber.Ctx) error {
+func (h *UserHandler) Login(c *fiber.Ctx) error {
 	startTime := time.Now()
 	var req dto.LoginRequest
 	if err := c.BodyParser(&req); err != nil {

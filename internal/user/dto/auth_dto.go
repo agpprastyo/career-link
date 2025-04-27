@@ -42,10 +42,10 @@ type RegisterResponse struct {
 
 // JobSeekerProfileDTO contains profile data for job seekers during registration
 type JobSeekerProfileDTO struct {
-	FirstName   string `json:"first_name"`
-	LastName    string `json:"last_name"`
-	DateOfBirth string `json:"date_of_birth,omitempty"`
-	Bio         string `json:"bio,omitempty"`
+	FirstName   string  `json:"first_name"`
+	LastName    string  `json:"last_name"`
+	DateOfBirth *string `json:"date_of_birth,omitempty"`
+	Bio         *string `json:"bio,omitempty"`
 }
 
 // CompanyProfileDTO contains profile data for companies during registration

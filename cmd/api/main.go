@@ -2,12 +2,11 @@ package main
 
 import (
 	"context"
-	"github.com/agpprastyo/career-link/internal/wire"
+	"github.com/agpprastyo/career-link/internal/app"
 	"github.com/agpprastyo/career-link/pkg/monitoring"
 	"github.com/joho/godotenv"
 	"os"
 	"os/signal"
-
 	"syscall"
 	"time"
 )
@@ -28,23 +27,23 @@ import (
 // @name Authorization
 // @description Type "Bearer" followed by a space and JWT token.
 func main() {
-	err := godotenv.Load()
-	// Load configuration
-	//cfg := config.Load()
+	_ = godotenv.Load()
 
-	server, err := wire.InitializeAPI()
+	svr, err := app.InitializeAPI()
 	if err != nil {
-		panic(err)
+		panic("Failed to initialize API: " + err.Error())
 	}
 
-	monitoring.SetupMonitoring(server.App, "career-link-api")
+	// Setup monitoring
+	monitoring.SetupMonitoring(svr.App, "career-link-api")
 
-	server.Logger.Info("Initializing server...")
+	svr.Logger.Info("Server initialized successfully")
+	svr.Logger.Info("OpenAPI doc available at http://localhost:" + svr.Config.Server.Port + "/swagger/index.html")
 
-	server.Logger.Info("Starting server on port " + server.Config.Server.Port)
-	server.Logger.Info("OpenAPI doc available at http://localhost:" + server.Config.Server.Port + "/swagger/index.html")
-	if err := server.App.Listen(":" + server.Config.Server.Port); err != nil {
-		server.Logger.WithError(err).Fatal("Server failed to start")
+	// Start the server
+	err = svr.Start()
+	if err != nil {
+		svr.Logger.Fatalf("Failed to start server: %v", err)
 	}
 
 	// Setup graceful shutdown
@@ -52,15 +51,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	<-quit
-	server.Logger.Println("Shutting down...")
+	svr.Logger.Info("Shutting down...")
 
 	// Give server up to 10 seconds to finish processing requests
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		server.Logger.Fatalf("Server shutdown failed: %v", err)
+	if err := svr.Shutdown(shutdownCtx); err != nil {
+		svr.Logger.Fatalf("Server shutdown failed: %v", err)
 	}
 
-	server.Logger.Println("Server gracefully stopped")
+	svr.Logger.Info("Server gracefully stopped")
 }

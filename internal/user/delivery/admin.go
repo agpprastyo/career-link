@@ -21,13 +21,13 @@ import (
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "id"
-// @Success      200  {object}  entity.DeleteAdminResponse
-// @Failure      400  {object}  entity.ErrorBadRequest
-// @Failure      404  {object}  entity.ErrorNotFound
-// @Failure      500  {object}  entity.ErrorInternalServer
+// @Success      200  {object}  dto.DeleteAdminResponse
+// @Failure      400  {object}  dto.ErrorBadRequest
+// @Failure      404  {object}  dto.ErrorNotFound
+// @Failure      500  {object}  dto.ErrorInternalServer
 // @Router       /admin/{id} [delete]
 // DeleteAdmin handles deleting an admin user
-func (h *Handler) DeleteAdmin(c *fiber.Ctx) error {
+func (h *UserHandler) DeleteAdmin(c *fiber.Ctx) error {
 	ctx := c.Context()
 	// Parse user ID from URL
 	idParam := c.Params("id")
@@ -52,7 +52,7 @@ func (h *Handler) DeleteAdmin(c *fiber.Ctx) error {
 }
 
 // UpdateAdminStatus handles updating the status of an admin user
-func (h *Handler) UpdateAdminStatus(c *fiber.Ctx) error {
+func (h *UserHandler) UpdateAdminStatus(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	// Parse user ID from URL
@@ -84,7 +84,7 @@ func (h *Handler) UpdateAdminStatus(c *fiber.Ctx) error {
 }
 
 // CreateAdmin handles creating a new admin user
-func (h *Handler) CreateAdmin(c *fiber.Ctx) error {
+func (h *UserHandler) CreateAdmin(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	var req dto.CreateAdminRequest
@@ -121,7 +121,7 @@ func (h *Handler) CreateAdmin(c *fiber.Ctx) error {
 }
 
 // GetUsersByID handles fetching a user by ID
-func (h *Handler) GetUsersByID(c *fiber.Ctx) error {
+func (h *UserHandler) GetUsersByID(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	id := c.Params("id")
@@ -138,7 +138,7 @@ func (h *Handler) GetUsersByID(c *fiber.Ctx) error {
 }
 
 // GetUsers handles fetching all users
-func (h *Handler) GetUsers(c *fiber.Ctx) error {
+func (h *UserHandler) GetUsers(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	paging := pagination.ExtractFromRequest(c)

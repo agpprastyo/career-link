@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"github.com/agpprastyo/career-link/internal/common/pagination"
@@ -160,8 +161,45 @@ func (r *UserRepository) UpdateUser(ctx context.Context, usr *entity.User) error
 
 	_, err := r.db.ExecContext(ctx, query, usr.Username, usr.Email, usr.Password, usr.Role, usr.Avatar, usr.IsActive, usr.ID)
 	if err != nil {
-		r.log.WithError(err).WithField("user", usr).Error("Failed to update user")
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrUserNotFound
+		case errors.Is(err, sql.ErrConnDone):
+			return ErrDatabaseConnection
+		default:
+			return err
+		}
+	}
+
+	return nil
+}
+
+// ActivateUser sets a user's active status to true by ID
+func (r *UserRepository) ActivateUser(ctx context.Context, userID uuid.UUID) error {
+	const query = `
+        UPDATE users
+        SET is_active = true
+        WHERE id = $1
+    `
+
+	result, err := r.db.ExecContext(ctx, query, userID)
+	if err != nil {
+		r.log.WithError(err).WithField("user_id", userID).Error("Failed to activate user")
+		switch {
+		case errors.Is(err, sql.ErrConnDone):
+			return ErrDatabaseConnection
+		default:
+			return err
+		}
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
 		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrUserNotFound
 	}
 
 	return nil

@@ -24,7 +24,7 @@ func main() {
 	log := logger.New(cfg)
 
 	// Connect to database
-	db, err := database.NewPostgresDB(cfg.Database)
+	db, err := database.NewPostgresDB(cfg.Database, log)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
